@@ -150,42 +150,55 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
+          set +H
           LATEST="${{ steps.latest-tag.outputs.tag }}"
           TAG="${{ steps.version.outputs.tag }}"
+          RANGE="${LATEST}..HEAD"
+
+          # Breaking: BREAKING CHANGE in body, or feat!/fix! in subject
+          BREAKING=$(git log "${RANGE}" --pretty=format:"- %s (%h) by @%an" \
+            -E --grep="BREAKING CHANGE" 2>/dev/null || true)
+          BREAKING_BANG=$(git log "${RANGE}" --pretty=format:"- %s (%h) by @%an" \
+            -E --grep="^(feat|fix)(\\([^)]*\\))?!:" 2>/dev/null || true)
+          BREAKING=$(printf "%s\n%s" "${BREAKING}" "${BREAKING_BANG}" | sort -u | grep -v '^$' || true)
+
+          # Features: feat: or feature: (exclude feat!: breaking)
+          FEATURES=$(git log "${RANGE}" --pretty=format:"- %s (%h) by @%an" \
+            -E --grep="^(feat|feature)(\\([^)]*\\))?:" 2>/dev/null | grep -v '!:' || true)
+
+          # Bug fixes: fix: or bugfix: (exclude fix!: breaking)
+          FIXES=$(git log "${RANGE}" --pretty=format:"- %s (%h) by @%an" \
+            -E --grep="^(fix|bugfix)(\\([^)]*\\))?:" 2>/dev/null | grep -v '!:' || true)
+
+          # Other: docs, chore, refactor, perf, style, test, build, ci, revert
+          OTHER=$(git log "${RANGE}" --pretty=format:"- %s (%h) by @%an" \
+            -E --grep="^(docs|chore|refactor|perf|style|test|build|ci|revert)(\\([^)]*\\))?:" 2>/dev/null || true)
 
           {
             echo "body<<CHANGELOG_EOF"
             echo "## What's Changed"
             echo ""
 
-            # Breaking changes
-            BREAKING=$(git log "${LATEST}..HEAD" --pretty=format:"- %s (%h)" --grep="BREAKING CHANGE" --grep="^.*!:" --extended-regexp 2>/dev/null || true)
             if [ -n "$BREAKING" ]; then
-              echo "### Breaking Changes"
+              echo "### ⚠️ Breaking Changes"
               echo "$BREAKING"
               echo ""
             fi
 
-            # Features
-            FEATURES=$(git log "${LATEST}..HEAD" --pretty=format:"- %s (%h) by @%an" --grep="^feat" --extended-regexp 2>/dev/null || true)
             if [ -n "$FEATURES" ]; then
               echo "### ✨ Features"
               echo "$FEATURES"
               echo ""
             fi
 
-            # Bug fixes
-            FIXES=$(git log "${LATEST}..HEAD" --pretty=format:"- %s (%h) by @%an" --grep="^fix" --extended-regexp 2>/dev/null || true)
             if [ -n "$FIXES" ]; then
               echo "### 🐛 Bug Fixes"
               echo "$FIXES"
               echo ""
             fi
 
-            # Other
-            OTHER=$(git log "${LATEST}..HEAD" --pretty=format:"- %s (%h)" --grep="^feat\|^fix\|BREAKING" --invert-grep --extended-regexp 2>/dev/null || true)
             if [ -n "$OTHER" ]; then
-              echo "### Other Changes"
+              echo "### 📋 Other Changes"
               echo "$OTHER"
               echo ""
             fi
