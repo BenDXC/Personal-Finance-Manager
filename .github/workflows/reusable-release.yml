@@ -146,6 +146,23 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: ./release-assets/
 
+      # ── Rename assets for deployment (versioned filenames) ─────────────
+      - name: Prepare release assets
+        if: inputs.artifact-name != ''
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${TAG#v}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          cd release-assets
+
+          # Rename main JAR to versioned name for deployable GitHub Release
+          MAIN_JAR=$(ls -S *.jar 2>/dev/null | head -1)
+          if [ -n "$MAIN_JAR" ] && [ "$MAIN_JAR" != "${REPO_NAME}-${VERSION}.jar" ]; then
+            mv "$MAIN_JAR" "${REPO_NAME}-${VERSION}.jar"
+            echo "Deployable: ${REPO_NAME}-${VERSION}.jar"
+          fi
+          ls -la
+
       # ── Generate changelog ───────────────────────────────────────────
       - name: Generate changelog
         id: changelog
