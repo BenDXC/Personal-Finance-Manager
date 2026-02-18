@@ -1,0 +1,96 @@
+# ============================================================================
+# Main CI/CD Workflow
+# ============================================================================
+# Orchestrates PR checks, CI, security scans, and semantic releases.
+# - Pull requests: PR checks, Java CI, security scan
+# - Push to main: CI, build, semantic release (conventional commits)
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ── PR-only: Quality checks, labels, conventional commit validation ─────
+  pr-checks:
+    name: PR Checks
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/reusable-pr-checks.yml
+
+  # ── CI: Compile, test (Maven) ───────────────────────────────────────────
+  ci:
+    name: Build & Test
+    uses: ./.github/workflows/reusable-ci-java.yml
+    with:
+      java-versions: '["21"]'
+      build-tool: maven
+
+  # ── Security: CodeQL, dependency review, Trivy ──────────────────────────
+  security:
+    name: Security Scan
+    uses: ./.github/workflows/reusable-security-scan.yml
+    with:
+      languages: '["java"]'
+      enable-trivy: true
+
+  # ── Build artifact for release (main only) ──────────────────────────────
+  build:
+    name: Build Artifact
+    needs: [ci]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Build with Maven
+        run: |
+          chmod +x mvnw 2>/dev/null || true
+          if [ -f "mvnw" ]; then
+            ./mvnw -B package -DskipTests
+          else
+            mvn -B package -DskipTests
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-artifact
+          path: |
+            target/*.jar
+          if-no-files-found: error
+
+  # ── Semantic release (main only, after build) ──────────────────────────
+  release:
+    name: Semantic Release
+    needs: [build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    uses: ./.github/workflows/reusable-release.yml
+    permissions:
+      contents: write
+    with:
+      release-type: auto
+      generate-release-notes: true
+      artifact-name: build-artifact
