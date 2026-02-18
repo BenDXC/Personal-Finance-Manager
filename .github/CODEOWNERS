@@ -6,13 +6,13 @@
 # ============================================================================
 
 # Default owners for everything
-* @your-org/platform-team
+* @BenDXC
 
 # CI/CD workflow files
-.github/workflows/ @your-org/devops-team
+.github/workflows/ @BenDXC
 
 # Dependabot configuration
-.github/dependabot.yml @your-org/devops-team
+.github/dependabot.yml @BenDXC
 
 # Documentation
-*.md @your-org/platform-team
+*.md @BenDXC
